@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a1033" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>Skyhoops - a basketball world tour in the sky</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏀</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="ui">
+      <!-- Loading -->
+      <section class="screen show" id="loading">
+        <div class="loader-ball"></div>
+        <p>Building the sky…</p>
+      </section>
+
+      <!-- Title -->
+      <section class="screen" id="title">
+        <div class="title-wrap">
+          <h1 class="logo" aria-label="Skyhoops">
+            <span>S</span><span>K</span><span>Y</span><span>H</span><span class="ball-o"></span><span class="ball-o b2"></span><span>P</span><span>S</span>
+          </h1>
+          <p class="tagline">A basketball world tour, high above the clouds</p>
+          <div class="title-buttons">
+            <button class="btn big primary" data-action="tour">World Tour</button>
+            <button class="btn big friends" data-action="friends">Play with Friends</button>
+          </div>
+          <button class="profile-chip" data-action="profile"><span class="avatar"></span><span class="name"></span><span class="edit">edit</span></button>
+        </div>
+        <div class="corner-toggles">
+          <button class="icon-btn" data-action="toggle-sfx" title="Sound effects">🔊</button>
+          <button class="icon-btn" data-action="toggle-music" title="Music">🎵</button>
+          <button class="icon-btn" data-action="toggle-quality" title="Graphics quality">✨</button>
+        </div>
+        <p class="title-hint">Swipe up on the ball to shoot. Swipe longer to throw further.</p>
+      </section>
+
+      <!-- Profile -->
+      <section class="screen modal" id="profile">
+        <div class="card sticker">
+          <h2>Who's shooting?</h2>
+          <label class="field">
+            <span>Your name</span>
+            <input id="profile-name" maxlength="14" autocomplete="off" placeholder="Type your name" />
+          </label>
+          <div class="field"><span>Ball colour</span><div class="swatches" id="profile-colors"></div></div>
+          <div class="field"><span>Your buddy</span><div class="avatars" id="profile-avatars"></div></div>
+          <button class="btn primary" data-action="profile-save">Let's go!</button>
+        </div>
+      </section>
+
+      <!-- World map -->
+      <section class="screen" id="map">
+        <header class="bar">
+          <button class="btn small ghost" data-action="home">‹ Back</button>
+          <h2>World Tour</h2>
+          <div class="star-total"><span class="star">★</span><span id="star-total">0</span>/21</div>
+        </header>
+        <div class="stage-track" id="stage-track"></div>
+      </section>
+
+      <!-- Stage intro -->
+      <section class="screen modal" id="intro">
+        <div class="card sticker intro-card">
+          <div class="intro-emblem"></div>
+          <p class="intro-num"></p>
+          <h2 class="intro-name"></h2>
+          <p class="intro-skill"></p>
+          <div class="intro-stars"></div>
+          <div class="row">
+            <button class="btn ghost" data-action="map">Map</button>
+            <button class="btn primary" data-action="intro-play">Play!</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- HUD -->
+      <section class="hud" id="hud">
+        <div class="hud-top">
+          <div class="hud-score sticker"><span class="label">Score</span><span id="hud-score">0</span></div>
+          <div class="hud-mid">
+            <div class="hud-balls" id="hud-balls"></div>
+            <div class="hud-timer sticker" id="hud-timer">60</div>
+          </div>
+          <button class="icon-btn" data-action="quit" title="Quit">✕</button>
+        </div>
+        <div class="hud-streak" id="hud-streak"><span class="flame">🔥</span><span id="hud-streak-n">0</span><span class="label">in a row</span></div>
+        <div class="hud-wind sticker" id="hud-wind"><div class="wind-arrow" id="wind-arrow">➜</div><span id="wind-speed">0</span></div>
+        <div class="popups" id="popups"></div>
+        <div class="hint" id="hint"></div>
+        <div class="power-ring" id="power-ring"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42" /><circle class="fill" cx="50" cy="50" r="42" /></svg><span></span></div>
+        <div class="scoreboard" id="scoreboard"></div>
+        <div class="reactions" id="reactions"></div>
+        <div class="floating-reacts" id="floating-reacts"></div>
+        <div class="feed" id="feed"></div>
+      </section>
+
+      <!-- Countdown -->
+      <section class="countdown" id="countdown"></section>
+
+      <!-- Results -->
+      <section class="screen modal" id="results">
+        <div class="card sticker results-card">
+          <p class="results-stage"></p>
+          <div class="big-stars"><span class="bstar">★</span><span class="bstar">★</span><span class="bstar">★</span></div>
+          <div class="results-score"><span id="results-score">0</span><small>points</small></div>
+          <div class="results-badges" id="results-badges"></div>
+          <div class="results-stats" id="results-stats"></div>
+          <div class="row">
+            <button class="btn ghost" data-action="map">Map</button>
+            <button class="btn" data-action="retry">Again</button>
+            <button class="btn primary" data-action="next">Next world ›</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Friends -->
+      <section class="screen modal" id="friends">
+        <div class="card sticker">
+          <h2>Play with Friends</h2>
+          <p class="muted">Everyone plays the same world at the same time. You'll see each other's shots fly as ghost balls!</p>
+          <button class="btn primary big-w" data-action="room-create">Create a room</button>
+          <div class="or"><span>or join one</span></div>
+          <div class="code-input">
+            <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="CODE" />
+            <button class="btn" data-action="room-join">Join</button>
+          </div>
+          <p class="net-status" id="net-status"></p>
+          <button class="btn small ghost" data-action="home">‹ Back</button>
+        </div>
+      </section>
+
+      <!-- Lobby -->
+      <section class="screen modal" id="lobby">
+        <div class="card sticker lobby-card">
+          <p class="muted">Room code</p>
+          <div class="room-code" id="room-code">----</div>
+          <button class="btn small" data-action="copy-link">Copy invite link</button>
+          <div class="lobby-players" id="lobby-players"></div>
+          <div class="lobby-stage">
+            <p class="muted" id="lobby-stage-label">World</p>
+            <div class="stage-chips" id="stage-chips"></div>
+          </div>
+          <div class="row">
+            <button class="btn ghost" data-action="room-leave">Leave</button>
+            <button class="btn primary" data-action="room-start" id="room-start">Start!</button>
+          </div>
+          <p class="muted" id="lobby-wait">Waiting for the host to start…</p>
+        </div>
+      </section>
+
+      <!-- Waiting for others -->
+      <section class="screen modal" id="waiting">
+        <div class="card sticker">
+          <h2>Nice shooting!</h2>
+          <p class="muted">Waiting for your friends to finish…</p>
+          <div class="lobby-players" id="waiting-players"></div>
+        </div>
+      </section>
+
+      <!-- Podium -->
+      <section class="screen" id="podium">
+        <h2 class="podium-title">Final Scores</h2>
+        <div class="podium" id="podium-stands"></div>
+        <div class="podium-rest" id="podium-rest"></div>
+        <div class="row">
+          <button class="btn ghost" data-action="room-leave">Leave room</button>
+          <button class="btn primary" data-action="room-lobby" id="podium-again">Play again</button>
+        </div>
+      </section>
+
+      <div class="toast" id="toast"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
