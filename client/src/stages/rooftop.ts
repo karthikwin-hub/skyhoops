@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { buildCourt, cloudPuffs, motes, spotOnArc } from './common';
-import { glowTexture } from '../engine/textures';
 import type { SceneryContext, StageDef } from './stageTypes';
+import { buildCity, SUNSET_CITY, warningLights, type BuildingSpec, type FacadeStyle } from './city';
+import { flock } from './birds';
 
 /** Lit-window facade texture; UVs are scaled per building so windows stay the same size. */
 export function windowTexture(rng: () => number, warm = '#ffd9a0', dark = '#1a1d33'): THREE.Texture {
@@ -38,47 +39,48 @@ export function tiledBox(w: number, h: number, d: number, tile = 22): THREE.BoxG
   return geo;
 }
 
-function skyline(ctx: SceneryContext, count: number, mat: THREE.Material, radius: [number, number]): THREE.Vector3[] {
-  const tops: THREE.Vector3[] = [];
-  for (let i = 0; i < count; i++) {
-    const a = ctx.rng() * Math.PI * 2;
-    const r = radius[0] + ctx.rng() * (radius[1] - radius[0]);
-    const w = 9 + ctx.rng() * 16;
-    const top = -26 + Math.pow(ctx.rng(), 1.5) * 34;
-    const h = top + 60;
-    const m = new THREE.Mesh(tiledBox(w, h, w * (0.7 + ctx.rng() * 0.6)), mat);
-    m.position.set(Math.sin(a) * r, top - h / 2, Math.cos(a) * r - 10);
-    m.rotation.y = ctx.rng() * Math.PI;
-    ctx.root.add(m);
-    tops.push(new THREE.Vector3(m.position.x, top, m.position.z));
-  }
-  return tops;
-}
-
-function birds(ctx: SceneryContext): (t: number) => void {
-  const flock: { g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; phase: number; rad: number; h: number }[] = [];
-  const mat = new THREE.MeshBasicMaterial({ color: '#2a1d2e', side: THREE.DoubleSide, fog: true });
-  const wing = new THREE.PlaneGeometry(0.5, 0.16);
-  wing.translate(0.25, 0, 0);
-  for (let i = 0; i < 14; i++) {
-    const g = new THREE.Group();
-    const l = new THREE.Mesh(wing, mat);
-    const r = new THREE.Mesh(wing, mat);
-    r.rotation.y = Math.PI;
-    g.add(l, r);
-    ctx.root.add(g);
-    flock.push({ g, l, r, phase: ctx.rng() * 0.6, rad: 30 + ctx.rng() * 6, h: 16 + ctx.rng() * 4 });
-  }
-  return (t) => {
-    for (const b of flock) {
-      const a = t * 0.08 + b.phase;
-      b.g.position.set(Math.sin(a) * b.rad - 10, b.h + Math.sin(t + b.phase * 10) * 0.6, Math.cos(a) * b.rad - 25);
-      b.g.rotation.y = a + Math.PI / 2;
-      const flap = Math.sin(t * 9 + b.phase * 20) * 0.6;
-      b.l.rotation.z = flap;
-      b.r.rotation.z = -flap;
+/** The city around the rooftop: low blocks fading into the cloud sea, and a few landmark towers. */
+function skyline(ctx: SceneryContext, count: number, sunDir: THREE.Vector3): BuildingSpec[] {
+  const sunAz = Math.atan2(sunDir.x, sunDir.z);
+  const specs: BuildingSpec[] = [];
+  const place = (r: [number, number], top: number, w: number, style: FacadeStyle, avoidSun: number) => {
+    for (let tries = 0; tries < 20; tries++) {
+      const a = ctx.rng() * Math.PI * 2;
+      let da = Math.abs(a - sunAz) % (Math.PI * 2);
+      if (da > Math.PI) da = Math.PI * 2 - da;
+      if (da < avoidSun) continue;
+      const rr = r[0] + ctx.rng() * (r[1] - r[0]);
+      specs.push({ x: Math.sin(a) * rr, z: Math.cos(a) * rr - 10, top, base: top - 70, w, d: w * (0.7 + ctx.rng() * 0.6), rotY: ctx.rng() * Math.PI, style });
+      return;
     }
   };
+  for (let i = 0; i < count; i++) {
+    const top = -26 + Math.pow(ctx.rng(), 1.5) * 34;
+    const style: FacadeStyle = top > -4 ? (ctx.rng() < 0.5 ? 'glass' : 'office') : (['glass', 'office', 'brick'] as const)[Math.floor(ctx.rng() * 3)];
+    place([75, 280], top, 10 + ctx.rng() * 16, style, 0.12);
+  }
+  // Compose the view behind the hoop (azimuth 180°): landmark towers to the right of the hoop and
+  // beyond the sun on the left, with mid-rise blocks filling in, all clear of the sun itself.
+  const at = (deg: number, r: number, top: number, w: number, style: FacadeStyle) => {
+    const a = (deg * Math.PI) / 180;
+    specs.push({ x: Math.sin(a) * r, z: Math.cos(a) * r - 10, top, base: top - 80, w, d: w * (0.75 + ctx.rng() * 0.4), rotY: ctx.rng() * Math.PI, style });
+  };
+  const landmarks: [number, number, number, number, FacadeStyle][] = [
+    [158, 230, 44, 22, 'glass'],
+    [170, 175, 26, 18, 'office'],
+    [146, 260, 34, 20, 'glass'],
+    [-112, 220, 38, 20, 'office'],
+    [-98, 260, 24, 18, 'glass'],
+  ];
+  for (const [deg, r, top, w, style] of landmarks.slice(0, ctx.high ? 5 : 3)) at(deg, r, top, w, style);
+  const fill = ctx.high ? 10 : 6;
+  for (let i = 0; i < fill; i++) {
+    const deg = 180 + (ctx.rng() - 0.3) * 80;
+    const away = Math.abs(((deg * Math.PI) / 180 - sunAz + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+    if (away < 0.12) continue;
+    at(deg, 95 + ctx.rng() * 70, -14 + ctx.rng() * 16, 11 + ctx.rng() * 10, (['glass', 'office', 'brick'] as const)[Math.floor(ctx.rng() * 3)]);
+  }
+  return specs;
 }
 
 export const rooftop: StageDef = {
@@ -99,12 +101,12 @@ export const rooftop: StageDef = {
     bottom: '#ffcf9a',
     sunDir: new THREE.Vector3(-0.55, 0.1, -1),
     sunColor: '#ffb070',
-    sunSize: 0.003,
+    sunSize: 0.0012,
     stars: 0,
     cloudLight: '#ffc3a0',
     cloudDark: '#a35c86',
   },
-  fog: { color: '#f19a7c', near: 70, far: 480 },
+  fog: { color: '#f19a7c', near: 90, far: 620 },
   light: { sun: '#ffc08a', sunIntensity: 2.8, hemiSky: '#a9b8ff', hemiGround: '#ff9a6a', hemiIntensity: 1.0, envIntensity: 0.8 },
   bloom: 0.9,
   court: { style: 'concrete', base: '#2b6886', alt: '#ffffff', paint: '#ff7a45', line: '#fff4e0', lineGlow: 0.12, emblem: 'SKYHOOPS', emblemColor: '#ffd7a0' },
@@ -135,29 +137,12 @@ export const rooftop: StageDef = {
   },
 
   build(ctx) {
-    const facade = new THREE.MeshStandardMaterial({
-      color: '#3a3550',
-      roughness: 0.5,
-      metalness: 0.3,
-      map: windowTexture(ctx.rng),
-      emissiveMap: windowTexture(ctx.rng),
-      emissive: '#ffb070',
-      emissiveIntensity: 1.3,
-    });
     buildCourt(ctx, { court: rooftop.court, rockColor: '#4a4058', trim: '#ffcf8a', rock: false });
 
-    const tower = new THREE.Mesh(tiledBox(17, 60, 15), facade);
-    tower.position.set(0, -0.7 - 30, 4.4);
-    ctx.root.add(tower);
-
-    const tops = skyline(ctx, ctx.high ? 46 : 26, facade, [75, 280]);
-    const blinkMat = new THREE.SpriteMaterial({ map: glowTexture(), color: '#ff3040', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-    for (const top of tops.slice(0, 18)) {
-      const s = new THREE.Sprite(blinkMat);
-      s.position.copy(top).add(new THREE.Vector3(0, 1.5, 0));
-      s.scale.setScalar(3);
-      ctx.root.add(s);
-    }
+    const specs = skyline(ctx, ctx.high ? 46 : 28, rooftop.sky.sunDir);
+    specs.push({ x: 0, z: 4.4, top: -0.7, base: -70, w: 17, d: 15, rotY: 0, style: 'office', plain: true });
+    const peaks = buildCity(ctx, specs, SUNSET_CITY);
+    const beacons = warningLights(ctx, peaks, 14);
 
     const rail = new THREE.MeshStandardMaterial({ color: '#d9d4e8', metalness: 0.8, roughness: 0.25 });
     for (const x of [-8.1, 8.1]) {
@@ -192,16 +177,17 @@ export const rooftop: StageDef = {
     ctx.root.add(wt, wtBase);
 
     const dust = motes(ctx, { count: 160, color: '#ffd2a0', size: 0.06, center: new THREE.Vector3(0, 3, 4), spread: new THREE.Vector3(20, 7, 18), drift: new THREE.Vector3(0.1, 0.03, 0), twinkle: 0.6 });
-    const clouds = cloudPuffs(ctx, ctx.high ? 26 : 14, '#ffc8b0', 170, [-30, 10], [30, 70], 0.75);
-    const flock = birds(ctx);
+    const clouds = cloudPuffs(ctx, ctx.high ? 16 : 9, '#ffc8b0', 190, [-32, -12], [30, 60], 0.45);
+    const far = flock(ctx, { count: 7, center: new THREE.Vector3(-15, 24, -45), radius: [55, 30], speed: 0.16, spacing: 2.2, scale: 1.3 });
+    const near = flock(ctx, { count: 4, center: new THREE.Vector3(4, 13, -6), radius: [34, 20], speed: 0.21, spacing: 1.6, scale: 1.1 });
 
     return {
       update({ dt, t }) {
         dust(dt, t);
         clouds(dt);
-        flock(t);
-        const on = Math.sin(t * 2.5) > 0.3;
-        blinkMat.opacity = on ? 1 : 0.1;
+        far(t, dt);
+        near(t + 40, dt);
+        beacons(t);
       },
     };
   },

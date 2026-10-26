@@ -79,12 +79,20 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
 
+/**
+ * One slice of the cloud sea. Every slice samples the same height field and shows only where the
+ * clouds reach its altitude, so a stack of slices reads as billowing cloud tops with real parallax.
+ */
 const cloudFragment = /* glsl */ `
 uniform vec3 uLight;
 uniform vec3 uDark;
-uniform vec3 uFog;
+uniform vec3 uHorizon;
+uniform vec3 uSunColor;
+uniform vec3 uSunDir;
+uniform vec3 uCam;
 uniform float uTime;
 uniform float uFlash;
+uniform float uLayer;
 varying vec3 vWorld;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -95,20 +103,45 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p) {
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+  for (int i = 0; i < OCTAVES; i++) { v += a * noise(p); p = p * 2.07 + vec2(1.7, 9.2); a *= 0.5; }
   return v;
+}
+float heightField(vec2 p) {
+  vec2 q = p + vec2(uTime * 0.006, uTime * 0.0025);
+  vec2 warp = vec2(fbm(q * 0.6 + 3.1), fbm(q * 0.6 - 1.7));
+  // Billows: sharpen the noise so tops are rounded and gaps between them are deep.
+  float h = fbm(q + warp * 0.8);
+  return smoothstep(0.24, 0.76, h);
 }
 
 void main() {
-  vec2 p = vWorld.xz * 0.018 + vec2(uTime * 0.012, uTime * 0.004);
-  float n = fbm(p + fbm(p * 1.7 - uTime * 0.01));
-  float puff = smoothstep(0.28, 0.85, n);
-  vec3 col = mix(uDark, uLight, puff);
+  vec2 p = vWorld.xz * 0.0105;
+  float h = heightField(p);
+  float level = uLayer * 0.9;
+  float inside = h - level;
+  float a = uLayer < 0.001 ? 1.0 : smoothstep(0.0, 0.05 + 0.05 * uLayer, inside);
+  if (a < 0.004) discard;
+
+  // Higher slices are the sunlit tops; the bottom slice is the shadowed floor of the valleys.
+  float lit = mix(0.12, 1.0, pow(uLayer, 0.75)) * (0.72 + 0.28 * smoothstep(0.0, 0.3, inside));
+  #ifdef SELF_SHADOW
+  vec2 toSun = normalize(uSunDir.xz + vec2(1e-4));
+  float hs = heightField(p + toSun * 0.06);
+  lit *= 1.0 - 0.5 * clamp((hs - h) * 3.5, 0.0, 1.0);
+  #endif
+  vec3 col = mix(uDark, uLight, lit);
+
+  // Light glows through thin cloud edges when looking toward the sun.
+  vec3 view = normalize(vWorld - uCam);
+  float forward = pow(max(dot(view, normalize(uSunDir)), 0.0), 5.0);
+  col += uSunColor * forward * (0.25 + 0.55 * (1.0 - a) + 0.2 * uLayer);
   col += uLight * uFlash * 0.6;
-  float dist = length(vWorld.xz);
-  float fade = smoothstep(520.0, 140.0, dist);
-  col = mix(uFog, col, fade * 0.85 + 0.15 * puff * fade);
-  gl_FragColor = vec4(col, 1.0);
+
+  float dist = length(vWorld.xz - uCam.xz);
+  col = mix(col, uHorizon, smoothstep(120.0, 1000.0, dist) * 0.78);
+  col = mix(col, uHorizon, smoothstep(700.0, 1150.0, dist));
+  if (uLayer > 0.001) a *= 1.0 - smoothstep(600.0, 1000.0, dist);
+  gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
 }`;
 
@@ -116,10 +149,11 @@ void main() {
 export class Sky {
   readonly group = new THREE.Group();
   private skyMat: THREE.ShaderMaterial;
-  private cloudMat: THREE.ShaderMaterial;
-  private cloudSea: THREE.Mesh;
+  private cloudMats: THREE.ShaderMaterial[] = [];
+  private cloudSea = new THREE.Group();
+  private horizon = new THREE.Color();
 
-  constructor() {
+  constructor(high = true) {
     this.skyMat = new THREE.ShaderMaterial({
       vertexShader: skyVertex,
       fragmentShader: skyFragment,
@@ -143,20 +177,36 @@ export class Sky {
     dome.renderOrder = -10;
     this.group.add(dome);
 
-    this.cloudMat = new THREE.ShaderMaterial({
-      vertexShader: cloudVertex,
-      fragmentShader: cloudFragment,
-      uniforms: {
-        uLight: { value: new THREE.Color() },
-        uDark: { value: new THREE.Color() },
-        uFog: { value: new THREE.Color() },
-        uTime: { value: 0 },
-        uFlash: { value: 0 },
-      },
-      fog: false,
-    });
-    this.cloudSea = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400, 1, 1), this.cloudMat);
-    this.cloudSea.rotation.x = -Math.PI / 2;
+    const layers = high ? 7 : 4;
+    const plane = new THREE.PlaneGeometry(2400, 2400, 1, 1);
+    plane.rotateX(-Math.PI / 2);
+    for (let i = 0; i < layers; i++) {
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: cloudVertex,
+        fragmentShader: cloudFragment,
+        defines: { OCTAVES: high ? 5 : 4, ...(high ? { SELF_SHADOW: '' } : {}) },
+        uniforms: {
+          uLight: { value: new THREE.Color() },
+          uDark: { value: new THREE.Color() },
+          uHorizon: { value: this.horizon },
+          uSunColor: { value: new THREE.Color() },
+          uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+          uCam: { value: new THREE.Vector3() },
+          uTime: { value: 0 },
+          uFlash: { value: 0 },
+          uLayer: { value: i / (layers - 1) },
+        },
+        transparent: i > 0,
+        depthWrite: i === 0,
+        fog: false,
+      });
+      const slice = new THREE.Mesh(plane, mat);
+      slice.position.y = (i / (layers - 1)) * 15;
+      slice.renderOrder = -5 + i * 0.01;
+      slice.frustumCulled = false;
+      this.cloudMats.push(mat);
+      this.cloudSea.add(slice);
+    }
     this.cloudSea.position.y = -38;
     this.group.add(this.cloudSea);
   }
@@ -171,20 +221,28 @@ export class Sky {
     u.uSunSize.value = p.sunSize;
     u.uStars.value = p.stars;
     u.uAurora.value = p.aurora ?? 0;
-    const c = this.cloudMat.uniforms;
-    (c.uLight.value as THREE.Color).set(p.cloudLight);
-    (c.uDark.value as THREE.Color).set(p.cloudDark);
-    (c.uFog.value as THREE.Color).set(p.mid);
+    // The colour the dome shows just below the horizon, so the cloud sea melts into the sky.
+    this.horizon.set(p.bottom).lerp(new THREE.Color(p.mid), 0.8);
+    for (const m of this.cloudMats) {
+      const c = m.uniforms;
+      (c.uLight.value as THREE.Color).set(p.cloudLight);
+      (c.uDark.value as THREE.Color).set(p.cloudDark);
+      (c.uSunColor.value as THREE.Color).set(p.sunColor);
+      (c.uSunDir.value as THREE.Vector3).copy(p.sunDir).normalize();
+    }
     this.cloudSea.position.y = p.cloudHeight ?? -38;
   }
 
   set flash(v: number) {
     this.skyMat.uniforms.uFlash.value = v;
-    this.cloudMat.uniforms.uFlash.value = v;
+    for (const m of this.cloudMats) m.uniforms.uFlash.value = v;
   }
 
-  update(t: number): void {
+  update(t: number, camera?: THREE.Camera): void {
     this.skyMat.uniforms.uTime.value = t;
-    this.cloudMat.uniforms.uTime.value = t;
+    for (const m of this.cloudMats) {
+      m.uniforms.uTime.value = t;
+      if (camera) (m.uniforms.uCam.value as THREE.Vector3).copy(camera.position);
+    }
   }
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { calmMotion } from './comfort';
 
 export type CameraMode = 'aim' | 'follow' | 'ballcam' | 'orbit' | 'podium';
 
@@ -48,6 +49,7 @@ export class CameraDirector {
   }
 
   addShake(amount: number): void {
+    if (calmMotion) return;
     this.shake = Math.min(1, this.shake + amount);
   }
 

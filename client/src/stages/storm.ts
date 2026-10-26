@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildCourt, cloudPuffs, HOOP_BASE, lerp, spotOnArc } from './common';
 import { tiledBox, windowTexture } from './rooftop';
 import type { SceneryContext, StageDef } from './stageTypes';
+import { calmMotion } from '../engine/comfort';
 
 function rain(ctx: SceneryContext, count: number): (dt: number, wind: THREE.Vector3, cam: THREE.Vector3) => void {
   const pos = new Float32Array(count * 6);
@@ -139,35 +140,39 @@ export const storm: StageDef = {
 
     const drops = rain(ctx, ctx.high ? 1800 : 800);
     const clouds = cloudPuffs(ctx, ctx.high ? 34 : 18, '#3a4262', 120, [-15, 35], [30, 70], 0.9);
-    let nextStrike = 2.5;
+    let nextStrike = 3;
     let flash = 0;
+    let flashPeak = 0;
     let boltLife = 0;
+    const BOLT_TIME = 0.4;
 
     return {
-      update({ dt, t, wind, camera }) {
+      update({ dt, wind, camera }) {
         drops(dt, wind, camera.position);
         clouds(dt * 3);
         nextStrike -= dt;
         if (nextStrike <= 0) {
-          nextStrike = 3 + ctx.rng() * 6;
+          nextStrike = 4.5 + ctx.rng() * 5;
           const near = ctx.rng() < 0.45;
           const target = near ? rodTips[Math.floor(ctx.rng() * 4)] : new THREE.Vector3((ctx.rng() - 0.5) * 200, -20, -60 - ctx.rng() * 100);
           const from = target.clone().add(new THREE.Vector3((ctx.rng() - 0.5) * 40, near ? 60 : 90, (ctx.rng() - 0.5) * 30 - 10));
           boltLine.geometry.dispose();
           boltLine.geometry = new THREE.BufferGeometry().setFromPoints(bolt(from, target, ctx.rng));
-          boltLine.visible = true;
-          boltLife = 0.35;
-          flash = near ? 1 : 0.6;
-          flashLight.position.copy(target).add(new THREE.Vector3(0, 6, 0));
+          boltLife = BOLT_TIME;
+          flashPeak = (near ? 0.55 : 0.3) * (calmMotion ? 0.35 : 1);
+          flashLight.position.copy(target).add(new THREE.Vector3(0, 22, 0));
           ctx.thunder(near ? 0.05 : 0.6 + ctx.rng() * 0.8, near ? 1 : 0.6);
         }
-        boltLife -= dt;
-        boltLine.visible = boltLife > 0 && Math.sin(boltLife * 90) > -0.3;
-        flash = Math.max(0, flash - dt * 3);
-        const flicker = flash * (0.6 + 0.4 * Math.sin(t * 70));
-        ctx.flashSky(flicker * 0.6);
-        flashLight.intensity = flicker * 900;
-        ctx.hemi.intensity = 0.7 + flicker * 2;
+        // One soft rise and fade per strike, never a strobe.
+        boltLife = Math.max(0, boltLife - dt);
+        const age = BOLT_TIME - boltLife;
+        if (boltLife > 0 && age < 0.08) flash = Math.max(flash, flashPeak * (age / 0.08));
+        else flash *= Math.exp(-dt * 3.2);
+        boltLine.visible = boltLife > 0;
+        boltMat.opacity = Math.min(1, boltLife / (BOLT_TIME * 0.5)) * (calmMotion ? 0.5 : 1);
+        ctx.flashSky(flash * 0.45);
+        flashLight.intensity = flash * 500;
+        ctx.hemi.intensity = 0.7 + flash * 1.1;
       },
     };
   },

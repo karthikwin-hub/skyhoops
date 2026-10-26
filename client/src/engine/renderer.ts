@@ -11,6 +11,7 @@ import {
   ToneMappingMode,
   VignetteEffect,
 } from 'postprocessing';
+import { calmMotion } from './comfort';
 
 export const isTouchDevice = matchMedia('(pointer: coarse)').matches;
 
@@ -31,7 +32,8 @@ export class Renderer {
   private baseBloom = 1.0;
   private bloomBoost = 0;
   private chromaKick = 0;
-  private dofTarget = new THREE.Vector3();
+  private dofTarget = new THREE.Vector3(0, 3, 0);
+  private dofFocus = new THREE.Vector3(0, 3, 0);
 
   constructor(
     container: HTMLElement,
@@ -61,8 +63,8 @@ export class Renderer {
     this.composer.addPass(this.renderPass);
 
     if (quality.high) {
-      this.dof = new DepthOfFieldEffect(this.camera, { focusDistance: 8, focusRange: 9, bokehScale: 2.2 });
-      this.dof.target = this.dofTarget;
+      this.dof = new DepthOfFieldEffect(this.camera, { focusDistance: 8, focusRange: 16, bokehScale: 1.4 });
+      this.dof.target = this.dofFocus;
       this.composer.addPass(new EffectPass(this.camera, this.dof));
     }
 
@@ -123,10 +125,11 @@ export class Renderer {
   }
 
   setFocus(p: THREE.Vector3): void {
-    this.dofTarget.lerp(p, 0.15);
+    this.dofTarget.copy(p);
   }
 
   pulse(world: THREE.Vector3, strength = 1): void {
+    if (calmMotion) return;
     this.shock.position.copy(world);
     this.shock.amplitude = 0.04 + 0.05 * strength;
     this.shock.explode();
@@ -139,7 +142,9 @@ export class Renderer {
       const k = this.chromaKick * this.chromaKick * 0.012;
       this.chroma.offset.set(k, k * 0.6);
     }
-    this.bloom.intensity = this.baseBloom * (1 + this.bloomBoost * 0.9) + this.chromaKick * 0.8;
+    // Refocus slowly: a fast focus change turns the sun into a bright disc that pops like a camera flash.
+    this.dofFocus.lerp(this.dofTarget, 1 - Math.exp(-dt * 0.8));
+    this.bloom.intensity = this.baseBloom * (1 + this.bloomBoost * 0.9);
     this.composer.render(dt);
   }
 }

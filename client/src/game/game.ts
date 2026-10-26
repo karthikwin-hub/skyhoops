@@ -73,7 +73,7 @@ export class Game {
   readonly scene = new THREE.Scene();
   readonly renderer: Renderer;
   readonly physics = new Physics();
-  readonly sky = new Sky();
+  readonly sky: Sky;
   readonly director: CameraDirector;
   readonly ball: Ball;
   readonly hoop: Hoop;
@@ -138,6 +138,7 @@ export class Game {
     this.renderer = new Renderer(container, this.scene, quality);
     this.director = new CameraDirector(this.renderer.camera);
     this.pmrem = new THREE.PMREMGenerator(this.renderer.renderer);
+    this.sky = new Sky(quality.high);
 
     this.scene.add(this.sky.group, this.stageRoot, this.hemi, this.sun, this.sun.target);
     this.sun.castShadow = true;
@@ -741,13 +742,7 @@ export class Game {
     // Camera bookkeeping.
     this.director.ball.copy(this.ball.position);
     this.director.hoop.copy(this.hoop.rimCenter);
-    if (this.director.mode === 'aim') {
-      this.renderer.setFocus(this.hoop.rimCenter);
-    } else if (this.director.mode === 'orbit' && this.phase === 'done') {
-      this.renderer.setFocus(this.hoop.rimCenter);
-    } else {
-      this.renderer.setFocus(this.ball.position);
-    }
+    this.renderer.setFocus(this.hoop.rimCenter);
     this.director.update(realDt);
 
     this.ball.setCameraPosition(this.renderer.camera.position);
@@ -758,7 +753,7 @@ export class Game {
     this.sparks.update(dt);
     this.confetti.update(dt, this.t);
     this.ghosts.tick(realDt);
-    this.sky.update(this.t);
+    this.sky.update(this.t, this.renderer.camera);
     this.scenery?.update({
       t: this.t,
       dt,

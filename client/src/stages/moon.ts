@@ -142,7 +142,7 @@ export const moon: StageDef = {
           const a = t * (0.04 + i * 0.015) + i * 2;
           s.position.set(Math.sin(a) * (40 + i * 20), 25 + i * 8, Math.cos(a) * (40 + i * 20) - 30);
           s.rotation.y = a;
-          (s.children[2] as THREE.Sprite).material.opacity = Math.sin(t * 4 + i) > 0.6 ? 1 : 0.1;
+          (s.children[2] as THREE.Sprite).material.opacity = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(t * 1.6 + i));
         });
         shootT -= dt;
         if (shootT < 0) {
