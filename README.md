@@ -34,26 +34,29 @@ To play with friends on the same Wi-Fi, open `http://<your-computer's-IP>:5173` 
 3. Friends join with the code or link (up to 6 players). The host picks a world and taps **Start!**
 4. Everyone plays the same round at the same time. Friends' shots fly as see-through ghost balls with their names. A live scoreboard and emoji reactions run during the round, and a podium shows at the end.
 
-## Production build
+## Live site (Cloudflare Workers, free plan)
+
+The game is live at **https://skyhoops.karthik-win.workers.dev**.
+
+One Cloudflare Worker (`worker/index.ts`, configured in `wrangler.jsonc`) does two jobs. It serves the built game from `dist/client`, and it sends `/ws` connections to a single Durable Object (`Lobby`) that runs the same room logic as the Node server (`server/rooms.ts`). Rooms live in that object's memory. If Cloudflare restarts it, rounds in progress end and players rejoin with a new code. Solo progress is saved in each player's browser, so it is never affected.
+
+To deploy changes:
+
+```bash
+npx wrangler login   # once per computer
+npm run deploy       # builds the client and runs wrangler deploy
+```
+
+`npm run preview:cf` runs the same Worker locally. `GET /health` returns `{"ok":true,"rooms":N}`.
+
+## Self-hosting on any Node host (alternative)
 
 ```bash
 npm run build   # type-checks and builds the client into dist/client
 npm start       # one Node process serves the game and the /ws room server
 ```
 
-The server listens on `PORT` (default 8787). `GET /health` returns `{"ok":true,"rooms":N}`.
-
-## Deploy (Render, Railway, Fly, or any Node host)
-
-Use one web service:
-
-- **Build command:** `npm install && npm run build`
-- **Start command:** `npm start`
-- **Health check path:** `/health`
-
-The host sets `PORT`, and HTTPS/WSS works automatically because the client connects to `/ws` on the same host. Rooms live in memory, so run a single instance. Restarting the server only ends rooms in progress; solo progress is saved in each player's browser.
-
-To host the client somewhere else (e.g. static hosting) and the server separately, build the client with `VITE_WS_URL=wss://your-server.example.com/ws npm run build`.
+The server listens on `PORT` (default 8787). On hosts like Render or Railway, use `npm install && npm run build` as the build command, `npm start` as the start command, and `/health` as the health check. Run a single instance, because rooms live in memory.
 
 ## Tests
 
@@ -77,6 +80,7 @@ npm run playtest -- http://localhost:5173/ rooftop --fast             # desktop,
 npm run playtest -- http://localhost:5173/ moon --mobile --fast       # phone-sized screen
 npm run playtest:friends -- http://localhost:5173/ rooftop            # two players, full round
 node scripts/accuracy.mjs http://localhost:5173/ cliffs               # logs each perfect shot's outcome
+node scripts/wssmoke.mjs wss://skyhoops.karthik-win.workers.dev/ws    # room server check, no browser needed
 ```
 
 ## Settings

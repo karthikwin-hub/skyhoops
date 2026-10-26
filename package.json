@@ -13,7 +13,9 @@
     "test": "vitest run",
     "playtest": "node scripts/playtest.mjs",
     "playtest:friends": "node scripts/mptest.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p worker",
+    "deploy": "npm run build && wrangler deploy",
+    "preview:cf": "npm run build && wrangler dev"
   },
   "engines": {
     "node": ">=20"
@@ -26,6 +28,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261026.1",
     "@types/node": "^26.6.5",
     "@types/three": "^0.186.0",
     "@types/ws": "^8.18.2",
@@ -33,6 +36,7 @@
     "playwright-core": "^1.64.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "wrangler": "^4.152.0"
   }
 }

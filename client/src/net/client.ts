@@ -40,6 +40,8 @@ export class NetClient {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
+      // Idle sockets get closed by proxies, so keep a little traffic flowing.
+      const keepAlive = setInterval(() => (ws.readyState === WebSocket.OPEN ? ws.send('{"t":"ping"}') : clearInterval(keepAlive)), 25000);
       this.setStatus('online');
       if (this.profile) ws.send(JSON.stringify({ t: 'hello', profile: this.profile } satisfies ClientMsg));
       for (const m of this.queue.splice(0)) ws.send(JSON.stringify(m));

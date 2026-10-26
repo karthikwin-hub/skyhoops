@@ -66,7 +66,8 @@ export type ClientMsg =
   | { t: 'ballEnd'; made: boolean }
   | { t: 'progress'; score: number; made: number; shots: number; streak: number; label?: string }
   | { t: 'finish'; score: number; made: number; shots: number; stars: number }
-  | { t: 'react'; emoji: string };
+  | { t: 'react'; emoji: string }
+  | { t: 'ping' };
 
 export type ServerMsg =
   | { t: 'welcome'; id: string }
